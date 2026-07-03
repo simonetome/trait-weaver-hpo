@@ -1,0 +1,237 @@
+---
+title: "1_disease_sim"
+output: html_document
+---
+
+```{r}
+
+
+library(matrixStats)
+library(data.table)
+library(ontologyIndex)
+library(arrow)
+
+# For disease-disease similarity matrix
+Rcpp::sourceCpp("../r/disease_sim.cpp")
+
+```
+
+# Load data 
+
+```{r}
+
+data(hpo)
+hp_terms <- names(hpo$name)
+
+```
+
+
+```{r}
+term_term_mat <- readRDS("../output/term_term_mat.RDS")
+```
+
+
+```{r}
+
+hpo_annotations <- fread("../data/phenotype.hpoa", skip=4)
+hpo_annotations <- hpo_annotations[hpo_annotations$hpo_id %in% hp_terms,]
+
+```
+
+# Diseases
+
+```{r}
+
+diseases <- unique(hpo_annotations$database_id)
+sprintf("Numb of diseases: %d",length(diseases))
+
+```
+
+
+```{r}
+
+#' The function returns annotated phenotype terms for the disease.
+#' @param disease disease id
+#' @return Returns a vector of HP:XXXX terms for 'disease' 
+get_annotations <- function(disease){
+    hpo_annotations$hpo_id[hpo_annotations$database_id == disease]
+}
+
+```
+
+```{r}
+# named list disease -> set of hp_annotations
+
+disease_pheno_map <- setNames(
+  lapply(diseases, get_annotations),
+  diseases
+)
+
+```
+
+
+
+# Disease-disease sim
+
+d1 has n pheno
+d2 has m pheno 
+
+sim(pi,pj) = Lin sim between pi,pj
+
+sim(d1 -> d2) = sum_i_n(max_j_m(sim(pi,pj)))/n
+
+sim(d1,d2) = 0.5*(sim(d1 -> d2) + sim(d2 -> d1))
+
+```{r}
+#'
+#'  
+#' 
+get_disease_disease_similarity <- function(d1,d2){
+  
+  p_d1 <- disease_pheno_map[[d1]]
+  p_d2 <- disease_pheno_map[[d2]]
+  
+  n <- length(p_d1)
+  m <- length(p_d2)
+  
+  similarities <- term_term_mat[p_d1,p_d2,drop=F]
+  
+  sim_d1_d2_ <- sum(rowMaxs(similarities))/n
+  sim_d2_d1_ <- sum(colMaxs(similarities))/m
+  
+  return(0.5*(sim_d1_d2_ + sim_d2_d1_))
+
+}
+
+#'
+#' Use this to check RCPP function
+#'
+get_disease_similarity_matrix <- function(diseases) {
+  n <- length(diseases)
+  sim_matrix <- matrix(NA_real_, nrow = n, ncol = n)
+  row.names(sim_matrix) <- diseases
+  colnames(sim_matrix) <- diseases
+  
+  for (i in seq_len(n)) {
+    for (j in i:n) {
+
+      s <- get_disease_disease_similarity(diseases[i], diseases[j])
+      sim_matrix[i, j] <- s
+      sim_matrix[j, i] <- s  # mirror to lower triangle
+    }
+  }
+  
+  sim_matrix
+}
+
+
+```
+
+
+
+This matrix is to check if RCPP function is correct 
+
+```{r}
+test_diseases <- diseases[1:20]
+```
+
+
+```{r}
+sim_matrix_R <- get_disease_similarity_matrix(test_diseases)
+```
+
+
+# Build data
+
+Cpp requires numeric indexes
+
+```{r}
+
+# term ids = hp_terms
+term_ids <- row.names(term_term_mat)         
+# named list term -> idx 
+term_index <- setNames(seq_along(term_ids), term_ids)
+
+# list DiseaseID -> HP pheno indexes
+pheno_idx_list <- lapply(disease_pheno_map[test_diseases], function(annotated_hp) {
+  idx <- unname(term_index[annotated_hp])
+})
+
+```
+
+
+
+```{r}
+sim_matrix_cpp <- disease_similarity_matrix_cpp(pheno_idx_list, term_term_mat)
+rownames(sim_matrix_cpp) <- test_diseases
+colnames(sim_matrix_cpp) <- test_diseases
+
+```
+
+
+## Tests 
+
+```{r}
+
+stopifnot(row.names(sim_matrix_cpp) == row.names(sim_matrix_R)) 
+stopifnot(colnames(sim_matrix_cpp) == colnames(sim_matrix_R)) 
+stopifnot(all(abs(sim_matrix_R - sim_matrix_cpp) < 1e-15))
+
+```
+
+
+
+# Compute disease-disease matrix
+
+```{r}
+
+# term ids = hp_terms
+term_ids <- row.names(term_term_mat)         
+# named list term -> idx 
+term_index <- setNames(seq_along(term_ids), term_ids)
+
+# list DiseaseID -> HP pheno indexes
+pheno_idx_list <- lapply(disease_pheno_map[diseases], function(annotated_hp) {
+  idx <- unname(term_index[annotated_hp])
+})
+
+
+sim_matrix_cpp <- disease_similarity_matrix_cpp(pheno_idx_list, term_term_mat)
+rownames(sim_matrix_cpp) <- diseases
+colnames(sim_matrix_cpp) <- diseases
+
+```
+
+
+```{r}
+
+dim(sim_matrix_cpp)
+
+```
+```{r}
+
+saveRDS(sim_matrix_cpp,"../output/disease_disease_sim.RDS")
+
+```
+
+# Dump all data for Github-release
+
+```{r}
+
+dd_df <- as.data.frame(sim_matrix_cpp)
+write_feather(dd_df, "../output/disease_disease_sim.feather")
+
+```
+
+
+```{r}
+
+tt_df <- as.data.frame(term_term_mat)
+write_feather(tt_df, "../output/term_term_sim.feather")
+
+```
+
+
+
+
+

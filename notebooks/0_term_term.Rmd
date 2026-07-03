@@ -1,0 +1,177 @@
+---
+title: "0_information_contents"
+output: html_document
+---
+
+### Preliminaries:
+
+get HPO annotations from: https://hpo.jax.org/data/annotations
+and save in data folder
+
+# Libraries
+
+```{r}
+
+packages <- c(
+  "dplyr", 
+  "data.table", 
+  "ontologyIndex", 
+  "ontologySimilarity", 
+  "tidyr",
+  "ggplot2",
+  "matrixStats",
+  "arrow"
+)
+
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
+
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(ontologySimilarity)
+library(ontologyIndex)
+library(ggplot2)
+
+
+```
+
+# Load data
+
+## Ontology
+```{r}
+data(hpo)
+```
+
+```{r}
+hp_terms <- names(hpo$name)
+sprintf("Number of terms: %d", length(hp_terms))
+```
+## Annotations
+```{r}
+hpo_annotations <- fread("../data/phenotype.hpoa", skip=4)
+head(hpo_annotations)
+```
+
+```{r}
+
+diseases <- unique(hpo_annotations$database_id)
+sprintf("Number of diseases: %d", length(diseases))
+
+```
+
+```{r}
+# filter annotations for only annotations where Hp-term is in the ontology 
+
+hpo_annotations <- hpo_annotations[hpo_annotations$hpo_id %in% hp_terms,]
+
+```
+
+
+
+# Propagate annotations
+
+for each annotation disease - hp term i also want disease - ancestors
+
+```{r}
+
+df_propagated <- hpo_annotations %>%
+  rowwise() %>%
+  mutate(hpo_id = list(c(hpo_id, get_ancestors(hpo, hpo_id)))) %>% 
+  unnest(hpo_id) %>%
+  distinct(hpo_id, database_id)
+
+```
+
+# Calc information contents
+
+```{r}
+
+N <- length(unique(df_propagated$database_id))
+
+# calculate normalized information content
+df_propagated %>% 
+  group_by(hpo_id) %>%
+  summarise(
+    IC = -log(n()/N),
+    IC_norm = -log(n()/N)/log(N)
+  ) -> information_contents_df 
+
+```
+
+
+
+```{r}
+# convert to named list 
+
+information_contents <- setNames(
+  information_contents_df$IC,
+  information_contents_df$hpo_id
+)
+
+```
+
+
+```{r}
+structural_ic <- descendants_IC(hpo)
+structural_ic_norm <- structural_ic/max(structural_ic)
+```
+
+# Term-term similarity 
+
+```{r}
+
+term_term_mat <- get_term_sim_mat(
+  hpo,
+  information_contents,
+  method="lin"
+)
+
+```
+
+
+
+```{r}
+
+term_term_mat["HP:0040064","HP:0001218"]
+
+
+```
+# Save data
+
+```{r}
+
+saveRDS(term_term_mat, "../output/term_term_mat.RDS")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
