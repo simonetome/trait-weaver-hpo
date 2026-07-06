@@ -69,12 +69,12 @@ information_contents <- setNames(
 
 
 structural_ic <- descendants_IC(hpo)
-structural_ic_norm <- structural_ic/max(structural_ic)
+#structural_ic_norm <- structural_ic/max(structural_ic)
 
 sprintf("Calculating t-t sim")
 term_term_mat <- get_term_sim_mat(
   hpo,
-  information_contents,
+  structural_ic, #information_contents, I'm not using this no more, it gives super-hubs (e.g. microcephaly has 300 neighbors)
   method="lin"
 )
 sprintf("Finished t-t sim")
