@@ -1,0 +1,22 @@
+name: trait-weaver-hpo
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - r-base=4.3
+  - compilers
+  - make
+  - r-rcpp
+  # from get_requirements.R
+  - r-ontologyindex
+  - r-ontologysimilarity
+  - r-tidyr
+  - r-ggplot2
+  - r-matrixstats
+  - r-arrow
+  # pulled in by your scripts / errors earlier
+  - r-dplyr
+  - r-stringr
+  - r-stringi
+  - r-data.table

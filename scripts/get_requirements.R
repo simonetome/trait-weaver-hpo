@@ -2,9 +2,9 @@
 
 print(getwd())
 
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
 packages <- c(
-  "dplyr", 
-  "data.table", 
   "ontologyIndex", 
   "ontologySimilarity", 
   "tidyr",
